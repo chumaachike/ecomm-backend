@@ -6,8 +6,8 @@ import com.ecommerce.project.model.Cart;
 import com.ecommerce.project.model.Category;
 import com.ecommerce.project.model.Product;
 import com.ecommerce.project.payload.CartDTO;
+import com.ecommerce.project.payload.EntityResponse;
 import com.ecommerce.project.payload.ProductDTO;
-import com.ecommerce.project.payload.ProductResponse;
 import com.ecommerce.project.repositories.CartRepository;
 import com.ecommerce.project.repositories.CategoryRepository;
 import com.ecommerce.project.repositories.ProductRepository;
@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,6 +49,9 @@ public class ProductServiceImpl implements ProductService{
     @Value("${project.image}")
     private String path;
 
+    @Autowired
+    private PixelService pixelService;
+
     @Override
     public ProductDTO addProduct(Long categoryId, ProductDTO productDTO) {
         Category category = categoryRepository.findById(categoryId)
@@ -66,7 +70,8 @@ public class ProductServiceImpl implements ProductService{
 
         if (isProductNotPresent) {
             Product product = modelMapper.map(productDTO, Product.class);
-            product.setImage("default.png");
+            String imageUrl = pixelService.fetchImage(product.getProductName());
+            product.setImageUrl(Objects.requireNonNullElse(imageUrl, "xxx"));
             product.setCategory(category);
             double specialPrice = product.getPrice() -
                     ((product.getDiscount() * 0.01) * product.getPrice());
@@ -79,7 +84,7 @@ public class ProductServiceImpl implements ProductService{
     }
 
     @Override
-    public ProductResponse getAllProducts(Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
+    public EntityResponse<ProductDTO> getAllProducts(Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
         Sort sortByAndOrder = sortOrder.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
@@ -93,7 +98,7 @@ public class ProductServiceImpl implements ProductService{
         if (products.isEmpty()){
             throw new APIException("No products");
         }
-        ProductResponse productResponse = new ProductResponse();
+        EntityResponse<ProductDTO> productResponse = new EntityResponse<>();
         productResponse.setContent(productDTOS);
         productResponse.setPageNumber(pageProducts.getNumber());
         productResponse.setPageSize(pageProducts.getSize());
@@ -104,7 +109,7 @@ public class ProductServiceImpl implements ProductService{
     }
 
     @Override
-    public ProductResponse searchByCategory(Long categoryId, Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
+    public EntityResponse<ProductDTO> searchByCategory(Long categoryId, Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
         Category category = categoryRepository.findById(categoryId)
                 .orElseThrow(()-> new ResourceNotFoundException("Category", "CategoryId", categoryId));
         Sort sortByAndOrder = sortOrder.equalsIgnoreCase("asc")
@@ -122,7 +127,7 @@ public class ProductServiceImpl implements ProductService{
         List<ProductDTO> productDTOS = products.stream()
                 .map(product -> modelMapper.map(product, ProductDTO.class)).toList();
 
-        ProductResponse productResponse = new ProductResponse();
+        EntityResponse<ProductDTO> productResponse = new EntityResponse<>();
         productResponse.setContent(productDTOS);
         productResponse.setPageNumber(pageProducts.getNumber());
         productResponse.setPageSize(pageProducts.getSize());
@@ -133,7 +138,7 @@ public class ProductServiceImpl implements ProductService{
     }
 
     @Override
-    public ProductResponse searchProductByKeyword(String keyword, Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
+    public EntityResponse<ProductDTO> searchProductByKeyword(String keyword, Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
         Sort sortByAndOrder = sortOrder.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
@@ -150,7 +155,7 @@ public class ProductServiceImpl implements ProductService{
             throw new APIException("Products not found with keyword: " + keyword);
         }
 
-        ProductResponse productResponse = new ProductResponse();
+        EntityResponse<ProductDTO> productResponse = new EntityResponse<>();
         productResponse.setContent(productDTOS);
         productResponse.setPageNumber(pageProducts.getNumber());
         productResponse.setPageSize(pageProducts.getSize());
@@ -201,9 +206,9 @@ public class ProductServiceImpl implements ProductService{
     @Override
     public ProductDTO deleteProduct(Long productId) {
         Product product = productRepository.findById(productId)
-                .orElseThrow(()-> new ResourceNotFoundException("Product", "ProductIt", productId));
+                .orElseThrow(()-> new ResourceNotFoundException("Product", "ProductId", productId));
         List<Cart> carts = cartRepository.findCartsByProductId(productId);
-        carts.forEach(cart -> cartService.deleteProductFromCart(cart.getCartId(),productId));
+        carts.forEach(cart -> cartService.deleteProductFromCart(productId));
         productRepository.delete(product);
         return modelMapper.map(product, ProductDTO.class);
     }
@@ -216,5 +221,12 @@ public class ProductServiceImpl implements ProductService{
         productFromDb.setImage(fileName);
         Product updatedProduct = productRepository.save(productFromDb);
         return modelMapper.map(updatedProduct, ProductDTO.class);
+    }
+
+    @Override
+    public ProductDTO getProduct(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(()-> new ResourceNotFoundException("Product", "ProductId", productId));
+        return modelMapper.map(product, ProductDTO.class);
     }
 }

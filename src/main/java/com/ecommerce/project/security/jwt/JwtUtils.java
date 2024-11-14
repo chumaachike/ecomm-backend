@@ -10,11 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.WebUtils;
 
-import javax.crypto.SecretKey;
 import java.security.Key;
 import java.util.Date;
 
@@ -28,58 +26,81 @@ public class JwtUtils {
     @Value("${spring.app.jwtExpirationMs}")
     private int jwtExpirationMs;
 
-    @Value("${spring.ecom.app.jwtCookieName}")
+    @Value("${spring.com.app.jwtCookieName}")
     private String jwtCookie;
 
+    @Value("${spring.com.app.jwtRefreshCookie}")
+    private String refreshCookie;
+
+    // Retrieve JWT from the cookie in the request
     public String getJwtFromCookies(HttpServletRequest request) {
         Cookie cookie = WebUtils.getCookie(request, jwtCookie);
-        if (cookie != null) {
-            System.out.println("COOKIE: " + cookie.getValue());
-            return cookie.getValue();
-        } else {
-            return null;
-        }
+        return cookie != null ? cookie.getValue() : null;
     }
 
+    // Generate a secure HTTP-only JWT cookie
     public ResponseCookie generateJwtCookie(UserDetailsImpl userPrincipal) {
         String jwt = generateTokenFromUsername(userPrincipal.getUsername());
-        ResponseCookie cookie = ResponseCookie.from(jwtCookie, jwt).path("/api").maxAge(24 * 60 * 60)
-                .httpOnly(false)
+        return ResponseCookie.from(jwtCookie, jwt)
+                .path("/")
+                .secure(isProduction())       // Set to true in production over HTTPS
+                .sameSite(isProduction() ? "None" : "Lax")  // Use "None" for cross-origin, "Lax" otherwise
+                .maxAge(24 * 60 * 60)         // Set appropriate expiration
                 .build();
-        return cookie;
     }
 
+    public ResponseCookie generateRefreshToken(UserDetailsImpl userPrincipal){
+        String jwt = generateTokenFromUsername(userPrincipal.getUsername());
+        return ResponseCookie.from(refreshCookie, jwt)
+                .path("/")
+                .secure(isProduction())       // Set to true in production over HTTPS
+                .sameSite(isProduction() ? "None" : "Lax")  // Use "None" for cross-origin, "Lax" otherwise
+                .maxAge(7 * 24 * 60 * 60)         // Set appropriate expiration
+                .build();
+    }
+
+    // Generate JWT token with expiration
     public String generateTokenFromUsername(String username) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
         return Jwts.builder()
-                .subject(username)
-                .issuedAt(new Date())
-                .expiration(new Date((new Date()).getTime() + jwtExpirationMs))
-                .signWith(key())
+                .setSubject(username)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey())
                 .compact();
     }
 
+    // Extract username from JWT token
     public String getUserNameFromJwtToken(String token) {
         return Jwts.parser()
-                .verifyWith((SecretKey) key())
-                .build().parseSignedClaims(token)
-                .getPayload().getSubject();
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .getSubject();
     }
 
+    // Generate a "clean" (empty) JWT cookie for signout
     public ResponseCookie getCleanJwtCookie(){
-        ResponseCookie cookie = ResponseCookie.from(jwtCookie, null)
-                .path("/api")
+        return ResponseCookie.from(jwtCookie, null)
+                .path("/") // Clear for all paths
+                .maxAge(0) // Expire immediately
                 .build();
-        return cookie;
     }
 
-    private Key key() {
+    // Retrieve signing key from the secret
+    private Key getSigningKey() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
     }
 
+    // Validate JWT token and log any errors
     public boolean validateJwtToken(String authToken) {
         try {
-            System.out.println("Validate");
-            Jwts.parser().verifyWith((SecretKey) key()).build().parseSignedClaims(authToken);
+            Jwts.parser()
+                    .setSigningKey(getSigningKey())
+                    .build()
+                    .parseClaimsJws(authToken);
             return true;
         } catch (MalformedJwtException e) {
             logger.error("Invalid JWT token: {}", e.getMessage());
@@ -91,5 +112,11 @@ public class JwtUtils {
             logger.error("JWT claims string is empty: {}", e.getMessage());
         }
         return false;
+    }
+
+    // Utility method to check if running in production
+    private boolean isProduction() {
+        // Customize this logic based on your environment detection setup
+        return "production".equals(System.getenv("ENVIRONMENT"));
     }
 }

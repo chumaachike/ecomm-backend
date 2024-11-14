@@ -96,7 +96,7 @@ public class OrderServiceImpl implements OrderService {
             productRepository.save(product);
 
             // Remove items from cart
-            cartService.deleteProductFromCart(cart.getCartId(), item.getProduct().getProductId());
+            cartService.deleteProductFromCart(item.getProduct().getProductId());
         });
 
         OrderDTO orderDTO = modelMapper.map(savedOrder, OrderDTO.class);

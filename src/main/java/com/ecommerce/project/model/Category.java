@@ -25,7 +25,10 @@ public class Category {
     @NonNull
     private String categoryName;
 
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL)
+    private String categoryUrl;
+
+    @OneToMany(mappedBy = "category", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, orphanRemoval = true)
     private List<Product> products;
+
 
 }

@@ -9,9 +9,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CartItemDTO {
     private Long cartItemId;
-    private CartDTO cart;
-    private ProductDTO productDTO;
+    private CartDTO cartDTO;
+    private ProductDTO productDTO;  // Nested Product information
     private Integer quantity;
     private Double discount;
-    private Double productPrice;
+    private Double productPrice;  // Ensure clarity of source mapping
 }
