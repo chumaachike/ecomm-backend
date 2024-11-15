@@ -1,12 +1,12 @@
 package com.ecommerce.project.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,21 +21,28 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long orderId;
 
-    @Email
-    @Column(nullable = false)
-    private String email;
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @OneToMany(mappedBy = "order", cascade = { CascadeType.PERSIST, CascadeType.MERGE })
+    @JsonManagedReference
     private List<OrderItem> orderItems = new ArrayList<>();
 
-    private LocalDate orderDate;
 
-    @OneToOne
-    @JoinColumn(name = "payment_id")
-    private Payment payment;
 
-    private Double totalAmount;
-    private String orderStatus;
+    private LocalDateTime orderDate;
+
+    @PrePersist
+    protected void onCreate() {
+        orderDate =  LocalDateTime.now();
+    }
+
+    @Enumerated(EnumType.STRING)
+    private OrderStatus orderStatus;
+
+    private Double totalPrice;
+
 
     // Reference to Address
     @ManyToOne

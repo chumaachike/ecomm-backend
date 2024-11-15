@@ -3,107 +3,199 @@ package com.ecommerce.project.service;
 import com.ecommerce.project.exceptions.APIException;
 import com.ecommerce.project.exceptions.ResourceNotFoundException;
 import com.ecommerce.project.model.*;
-import com.ecommerce.project.payload.OrderDTO;
-import com.ecommerce.project.payload.OrderItemDTO;
+import com.ecommerce.project.payload.*;
 import com.ecommerce.project.repositories.*;
+import com.ecommerce.project.util.AuthUtil;
 import jakarta.transaction.Transactional;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderServiceImpl implements OrderService {
 
     @Autowired
-    CartRepository cartRepository;
+    private CartRepository cartRepository;
 
     @Autowired
-    AddressRepository addressRepository;
+    private CartItemRepository cartItemRepository;
 
     @Autowired
-    OrderItemRepository orderItemRepository;
+    private AddressRepository addressRepository;
 
     @Autowired
-    OrderRepository orderRepository;
+    private OrderItemRepository orderItemRepository;
 
     @Autowired
-    PaymentRepository paymentRepository;
+    private OrderRepository orderRepository;
 
     @Autowired
-    CartService cartService;
+    private CartService cartService;
 
     @Autowired
-    ModelMapper modelMapper;
+    private ModelMapper modelMapper;
 
     @Autowired
-    ProductRepository productRepository;
+    private ProductRepository productRepository;
+
+    @Autowired
+    private AuthUtil authUtil;
 
     @Override
     @Transactional
-    public OrderDTO placeOrder(String emailId, Long addressId, String paymentMethod, String pgName, String pgPaymentId, String pgStatus, String pgResponseMessage) {
-        Cart cart = cartRepository.findCartByEmail(emailId);
-        if (cart == null) {
-            throw new ResourceNotFoundException("Cart", "email", emailId);
+    public OrderDTO placeOrder(Long addressId, List<OrderItemRequestDTO> items) {
+        if (items == null || items.isEmpty()) {
+            throw new APIException("Order items cannot be empty");
         }
-
-        Address address = addressRepository.findById(addressId)
-                .orElseThrow(() -> new ResourceNotFoundException("Address", "addressId", addressId));
 
         Order order = new Order();
-        order.setEmail(emailId);
-        order.setOrderDate(LocalDate.now());
-        order.setTotalAmount(cart.getTotalPrice());
-        order.setOrderStatus("Order Accepted !");
+        order.setUser(authUtil.loggedInUser());
+        order.setOrderStatus(OrderStatus.PENDING);
+
+        Address address = addressRepository.findById(addressId)
+                .orElseThrow(() -> new ResourceNotFoundException("Address", "AddressId", addressId));
         order.setAddress(address);
 
-        Payment payment = new Payment(paymentMethod, pgPaymentId, pgStatus, pgResponseMessage, pgName);
-        payment.setOrder(order);
-        payment = paymentRepository.save(payment);
-        order.setPayment(payment);
+        double totalPrice = items.stream()
+                .mapToDouble(itemDTO -> processOrderItem(itemDTO, order))
+                .sum();
 
+        order.setTotalPrice(totalPrice);
         Order savedOrder = orderRepository.save(order);
 
-        List<CartItem> cartItems = cart.getCartItems();
-        if (cartItems.isEmpty()) {
-            throw new APIException("Cart is empty");
+        return convertToOrderDTO(savedOrder);  // Use this method to ensure enriched DTO
+    }
+
+    @Override
+    public EntityResponse<OrderDTO> getUserOrders(Integer pageNumber, Integer pageSize, String sortBy, String sortOrder) {
+        String email = authUtil.loggedInEmail();
+
+        // Create Sort object based on sortOrder
+        Sort sortByAndOrder = sortOrder.equalsIgnoreCase("asc")
+                ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
+
+        // Create Pageable object
+        Pageable pageDetails = PageRequest.of(pageNumber, pageSize, sortByAndOrder);
+        // Fetch paginated orders
+        Page<Order> pageOrders = orderRepository.findAllByEmail(email, pageDetails);
+
+
+        List<Order> orders = pageOrders.getContent();
+        if (orders.isEmpty()) throw new APIException("No orders found");
+        List<OrderDTO> orderDTOS = orders.stream()
+                .map(order -> modelMapper.map(order, OrderDTO.class)).toList();
+
+        EntityResponse<OrderDTO> orderResponse = new EntityResponse<>();
+        orderResponse.setContent(orderDTOS);
+        orderResponse.setPageNumber(pageOrders.getNumber());
+        orderResponse.setPageSize(pageOrders.getSize());
+        orderResponse.setTotalElements(pageOrders.getTotalElements());
+        orderResponse.setTotalPages(pageOrders.getTotalPages());
+        orderResponse.setLastPage(pageOrders.isLast());
+
+        return orderResponse;
+    }
+
+    @Override
+    public OrderDTO buySelectedFromCart(Long addressId, List<OrderItemRequestDTO> selectedItems) {
+        String email = authUtil.loggedInEmail();
+
+        // Retrieve user's cart
+        Cart cart = cartRepository.findCartByEmail(email);
+        if (cart == null || cart.getCartItems().isEmpty()) {
+            throw new APIException("Cart is empty. Add items to cart before purchasing.");
         }
 
-        List<OrderItem> orderItems = new ArrayList<>();
-        for (CartItem cartItem : cartItems) {
-            OrderItem orderItem = new OrderItem();
-            orderItem.setProduct(cartItem.getProduct());
-            orderItem.setQuantity(cartItem.getQuantity());
-            orderItem.setDiscount(cartItem.getDiscount());
-            orderItem.setOrderedProductPrice(cartItem.getProductPrice());
-            orderItem.setOrder(savedOrder);
-            orderItems.add(orderItem);
+        // Filter cart items based on selected items
+        List<CartItem> itemsToPurchase = selectedItems.stream()
+                .map(selectedItem -> {
+                    CartItem cartItem = cart.getCartItems().stream()
+                            .filter(ci -> ci.getProduct().getProductId().equals(selectedItem.getProductId()))
+                            .findFirst()
+                            .orElseThrow(() -> new ResourceNotFoundException(
+                                    "Product", "productId", selectedItem.getProductId()
+                            ));
+
+                    if (cartItem.getQuantity() < selectedItem.getQuantity()) {
+                        throw new APIException("Insufficient quantity in cart for product: "
+                                + cartItem.getProduct().getProductName() + ". Available: "
+                                + cartItem.getQuantity() + ", Requested: " + selectedItem.getQuantity());
+                    }
+
+                    return cartItem;
+                })
+                .toList();
+
+        // Map selected cart items to OrderItemRequestDTO
+        List<OrderItemRequestDTO> orderItemRequests = itemsToPurchase.stream()
+                .map(cartItem -> new OrderItemRequestDTO(cartItem.getProduct().getProductId(), cartItem.getQuantity()))
+                .toList();
+
+        // Place the order using the filtered items
+        OrderDTO order = placeOrder(addressId, orderItemRequests);
+
+        // Remove purchased items from the cart
+        itemsToPurchase.forEach(cart::removeCartItem);  // Ensure removal from in-memory collection
+        cartItemRepository.deleteAll(itemsToPurchase);  // Ensure database deletion
+
+        return order;
+    }
+
+    @Override
+    public OrderDTO buyNow(Long addressId, OrderItemRequestDTO itemRequest) {
+        return placeOrder(addressId, List.of(itemRequest));
+    }
+
+
+    private double processOrderItem(OrderItemRequestDTO itemDTO, Order order) {
+        Product product = productRepository.findById(itemDTO.getProductId())
+                .orElseThrow(() -> new ResourceNotFoundException("Product", "ProductId", itemDTO.getProductId()));
+
+        if (product.getQuantity() < itemDTO.getQuantity()) {
+            throw new APIException("Insufficient stock for product: " + product.getProductName());
         }
 
-        orderItems = orderItemRepository.saveAll(orderItems);
+        product.setQuantity(product.getQuantity() - itemDTO.getQuantity());
+        productRepository.save(product);
 
-        cart.getCartItems().forEach(item -> {
-            int quantity = item.getQuantity();
-            Product product = item.getProduct();
+        OrderItem orderItem = new OrderItem();
+        orderItem.setOrder(order);
+        orderItem.setProduct(product);
+        orderItem.setQuantity(itemDTO.getQuantity());
+        orderItem.setPrice(product.getSpecialPrice() * itemDTO.getQuantity());
 
-            // Reduce stock quantity
-            product.setQuantity(product.getQuantity() - quantity);
+        order.getOrderItems().add(orderItem);
+        return orderItem.getPrice();
+    }
 
-            // Save product back to the database
-            productRepository.save(product);
+    private OrderDTO convertToOrderDTO(Order order) {
+        OrderDTO orderDTO = modelMapper.map(order, OrderDTO.class);
 
-            // Remove items from cart
-            cartService.deleteProductFromCart(item.getProduct().getProductId());
-        });
-
-        OrderDTO orderDTO = modelMapper.map(savedOrder, OrderDTO.class);
-        orderItems.forEach(item -> orderDTO.getOrderItems().add(modelMapper.map(item, OrderItemDTO.class)));
-
-        orderDTO.setAddressId(addressId);
+        List<OrderItemDTO> orderItemDTOs = order.getOrderItems().stream()
+                .map(this::convertToOrderItemDTO)
+                .collect(Collectors.toList());
+        orderDTO.setOrderItems(orderItemDTOs);
 
         return orderDTO;
+    }
+
+    private OrderItemDTO convertToOrderItemDTO(OrderItem orderItem) {
+        ProductDTO productDTO = modelMapper.map(orderItem.getProduct(), ProductDTO.class);
+
+        OrderItemDTO orderItemDTO = new OrderItemDTO();
+        orderItemDTO.setOrderItemId(orderItem.getOrderItemId());
+        orderItemDTO.setProductDTO(productDTO);  // Use ProductDTO for enriched response
+        orderItemDTO.setQuantity(orderItem.getQuantity());
+        orderItemDTO.setPrice(orderItem.getPrice());
+
+        return orderItemDTO;
     }
 }

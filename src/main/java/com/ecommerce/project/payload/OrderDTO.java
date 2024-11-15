@@ -1,10 +1,12 @@
 package com.ecommerce.project.payload;
 
+import com.ecommerce.project.model.OrderStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -12,11 +14,9 @@ import java.util.List;
 @AllArgsConstructor
 public class OrderDTO {
     private Long orderId;
-    private String email;
+    private LocalDateTime orderDate;
+    private OrderStatus orderStatus;
+    private Double totalPrice;
+    private AddressDTO address; // Use a DTO for Address if needed
     private List<OrderItemDTO> orderItems;
-    private LocalDate orderDate;
-    private PaymentDTO payment;
-    private Double totalAmount;
-    private String orderStatus;
-    private Long addressId;
 }

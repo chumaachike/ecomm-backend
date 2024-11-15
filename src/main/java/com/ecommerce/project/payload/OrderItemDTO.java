@@ -1,5 +1,6 @@
 package com.ecommerce.project.payload;
 
+import com.ecommerce.project.model.Product;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,8 +10,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OrderItemDTO {
     private Long orderItemId;
-    private ProductDTO product;
+    private ProductDTO productDTO;
     private Integer quantity;
-    private double discount;
-    private double orderedProductPrice;
+    private double price;
 }
