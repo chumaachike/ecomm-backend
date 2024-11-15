@@ -5,9 +5,9 @@ import com.ecommerce.project.exceptions.ResourceNotFoundException;
 import com.ecommerce.project.model.Cart;
 import com.ecommerce.project.model.Category;
 import com.ecommerce.project.model.Product;
-import com.ecommerce.project.payload.CartDTO;
 import com.ecommerce.project.payload.EntityResponse;
 import com.ecommerce.project.payload.ProductDTO;
+import com.ecommerce.project.repositories.CartItemRepository;
 import com.ecommerce.project.repositories.CartRepository;
 import com.ecommerce.project.repositories.CategoryRepository;
 import com.ecommerce.project.repositories.ProductRepository;
@@ -24,10 +24,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
+
 
 @Service
 public class ProductServiceImpl implements ProductService{
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
     @Autowired
     private ProductRepository productRepository;
 
@@ -169,39 +172,50 @@ public class ProductServiceImpl implements ProductService{
     public ProductDTO updateProduct(Long productId, ProductDTO productDTO) {
         Product existingProduct = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", "productId", productId));
-        Product product = modelMapper.map(productDTO, Product.class);
-        existingProduct.setProductName(product.getProductName()); // Assuming product has name
-        existingProduct.setDescription(product.getDescription()); // Assuming product has description
-        existingProduct.setPrice(product.getPrice());
-        existingProduct.setDiscount(product.getDiscount());
-        existingProduct.setImage(product.getImage() != null ? product.getImage() : "default.png");
 
-        // Step 4: Calculate special price
+        // Map updated fields from ProductDTO to the existing product
+        if (productDTO.getProductName() != null)existingProduct.setProductName(productDTO.getProductName());
+        if (productDTO.getDescription() != null)existingProduct.setDescription(productDTO.getDescription());
+        if (productDTO.getPrice() != 0.0)existingProduct.setPrice(productDTO.getPrice());
+        if (productDTO.getDiscount() != 0.0)existingProduct.setDiscount(productDTO.getDiscount());
+        if (productDTO.getQuantity() != null) existingProduct.setQuantity(productDTO.getQuantity());
+        existingProduct.setImage(productDTO.getImage() != null ? productDTO.getImage() : "default.png");
+
+        // Recalculate special price
         double specialPrice = existingProduct.getPrice() -
                 (existingProduct.getDiscount() * 0.01) * existingProduct.getPrice();
         existingProduct.setSpecialPrice(specialPrice);
 
-        // Step 5: Save the updated product
+        // Save the updated product
         Product updatedProduct = productRepository.save(existingProduct);
 
+        // Update all carts that contain this product
         List<Cart> carts = cartRepository.findCartsByProductId(productId);
 
-        List<CartDTO> cartDTOs = carts.stream().map(cart -> {
-            CartDTO cartDTO = modelMapper.map(cart, CartDTO.class);
+        carts.forEach(cart -> {
+            cart.getCartItems().stream()
+                    .filter(cartItem -> cartItem.getProduct().getProductId().equals(productId))
+                    .forEach(cartItem -> {
+                        cartItem.setProductPrice(updatedProduct.getSpecialPrice());
+                        cartItem.setDiscount(updatedProduct.getDiscount());
+                        cartItemRepository.save(cartItem); // Save updated cart item
+                    });
 
-            List<ProductDTO> products = cart.getCartItems().stream()
-                    .map(p -> modelMapper.map(p.getProduct(), ProductDTO.class)).collect(Collectors.toList());
+            // Recalculate and save cart's total price
+            recalculateCartTotalPrice(cart);
+        });
 
-            cartDTO.setProducts(products);
-
-            return cartDTO;
-
-        }).toList();
-
-        cartDTOs.forEach(cart -> cartService.updateProductInCarts(cart.getCartId(), productId));
-        // Step 6: Convert the updated product to DTO and return it
         return modelMapper.map(updatedProduct, ProductDTO.class);
     }
+
+    private void recalculateCartTotalPrice(Cart cart) {
+        double newTotalPrice = cart.getCartItems().stream()
+                .mapToDouble(item -> item.getProductPrice() * item.getQuantity())
+                .sum();
+        cart.setTotalPrice(newTotalPrice);
+        cartRepository.save(cart); // Save updated cart total price
+    }
+
 
     @Override
     public ProductDTO deleteProduct(Long productId) {

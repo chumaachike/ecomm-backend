@@ -3,6 +3,7 @@ package com.ecommerce.project.service;
 import com.ecommerce.project.payload.EntityResponse;
 import com.ecommerce.project.payload.OrderDTO;
 import com.ecommerce.project.payload.OrderItemRequestDTO;
+import com.ecommerce.project.payload.OrderRequestDTO;
 
 import java.util.List;
 
@@ -11,7 +12,6 @@ public interface OrderService {
 
     EntityResponse<OrderDTO> getUserOrders(Integer pageNumber, Integer pageSize, String sortBy, String sortOrder);
 
-    OrderDTO buySelectedFromCart(Long addressId, List<OrderItemRequestDTO> selectedItems);
+    OrderDTO purchase(OrderRequestDTO orderRequest);
 
-    OrderDTO buyNow(Long addressId, OrderItemRequestDTO itemRequest);
 }

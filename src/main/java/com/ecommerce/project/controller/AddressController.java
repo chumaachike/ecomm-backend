@@ -33,12 +33,12 @@ public class AddressController {
     @GetMapping("addresses/{addressId}")
     public ResponseEntity<AddressDTO>getAddressById(@PathVariable Long addressId){
         AddressDTO foundAddress = addressService.getAddress(addressId);
-        return new ResponseEntity<>(foundAddress, HttpStatus.FOUND);
+        return new ResponseEntity<>(foundAddress, HttpStatus.OK);
     }
     @GetMapping("/users/addresses")
     public ResponseEntity<List<AddressDTO>>getUserAddresses(){
         List<AddressDTO> addressDTOS = addressService.getUserAddresses();
-        return new ResponseEntity<>(addressDTOS, HttpStatus.FOUND);
+        return new ResponseEntity<>(addressDTOS, HttpStatus.OK);
     }
 
     @PutMapping("/addresses/{addressId}")
