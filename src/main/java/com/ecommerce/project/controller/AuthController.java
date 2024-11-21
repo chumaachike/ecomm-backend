@@ -3,7 +3,6 @@ package com.ecommerce.project.controller;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import com.ecommerce.project.model.AppRole;
 import com.ecommerce.project.model.Role;
 import com.ecommerce.project.model.User;
@@ -37,7 +36,6 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("api/auth")
-@CrossOrigin(origins = "http://localhost:3000")
 public class AuthController {
 
     @Autowired

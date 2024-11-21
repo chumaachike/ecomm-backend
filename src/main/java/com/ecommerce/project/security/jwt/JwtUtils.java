@@ -43,9 +43,10 @@ public class JwtUtils {
         String jwt = generateTokenFromUsername(userPrincipal.getUsername());
         return ResponseCookie.from(jwtCookie, jwt)
                 .path("/")
-                .secure(isProduction())       // Set to true in production over HTTPS
-                .sameSite(isProduction() ? "None" : "Lax")  // Use "None" for cross-origin, "Lax" otherwise
-                .maxAge(24 * 60 * 60)         // Set appropriate expiration
+                .httpOnly(true)                   // Prevent access via JavaScript
+                .secure(isProduction())          // Ensure HTTPS in production
+                .sameSite(isProduction() ? "None" : "Lax")  // Cross-origin or default
+                .maxAge(24 * 60 * 60)            // Set expiration (1 day)
                 .build();
     }
 
