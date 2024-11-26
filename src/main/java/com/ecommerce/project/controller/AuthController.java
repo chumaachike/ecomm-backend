@@ -61,34 +61,47 @@ public class AuthController {
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
         Authentication authentication;
         try {
-            authentication = authenticationManager
-                    .authenticate(new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginRequest.getUsername(),
+                            loginRequest.getPassword()
+                    )
+            );
         } catch (AuthenticationException exception) {
-            Map<String, Object> map = new HashMap<>();
-            map.put("message", "Invalid Username or Password");
-            map.put("status", false);
-            // Use 401 Unauthorized instead of 404 Not Found
-            return new ResponseEntity<>(map, HttpStatus.UNAUTHORIZED);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("message", "Authentication failed"); // Generic message
+            errorResponse.put("status", false);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
         }
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
+        // Generate cookies
         ResponseCookie jwtCookie = jwtUtils.generateJwtCookie(userDetails);
         ResponseCookie refreshTokenCookie = jwtUtils.generateRefreshToken(userDetails);
 
+        // Collect roles
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());
 
-        UserInfoResponse response = new UserInfoResponse(userDetails.getId(),
-                userDetails.getUsername(), roles, jwtCookie.toString());
+        // Build user response
+        UserInfoResponse userInfoResponse = new UserInfoResponse(
+                userDetails.getId(),
+                userDetails.getUsername(),
+                roles,
+                null // Exclude the JWT from the body if stored in a cookie
+        );
 
-        return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE,
-                        jwtCookie.toString())
-                .body(response);
+        // Return cookies and user info
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, jwtCookie.toString())
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body(userInfoResponse);
     }
+
 
 
     @PostMapping("/signup")
