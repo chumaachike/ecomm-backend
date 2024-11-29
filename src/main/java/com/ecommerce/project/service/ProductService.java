@@ -19,7 +19,7 @@ public interface ProductService {
 
     ProductDTO deleteProduct(Long productId);
 
-    ProductDTO updateProductImage(Long productId, MultipartFile image) throws IOException;
-
     ProductDTO getProduct(Long productId);
+
+    EntityResponse<ProductDTO> getUserProducts(Integer pageNumber, Integer pageSize, String sortBy, String sortOrder);
 }

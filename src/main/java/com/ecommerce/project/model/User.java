@@ -31,6 +31,7 @@ public class User {
     @Column(name = "username")
     private String userName;
 
+
     @NotBlank
     @Size(max = 50)
     @Email
@@ -63,15 +64,12 @@ public class User {
     private List<Address> addresses = new ArrayList<>();
 
     @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, orphanRemoval = true)
+    private List<Product> products = new ArrayList<>();
+
+    @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, orphanRemoval = true)
     private List<Order> orders = new ArrayList<>();
 
     @ToString.Exclude
     @OneToOne(mappedBy = "user", cascade = { CascadeType.PERSIST, CascadeType.MERGE}, orphanRemoval = true)
     private Cart cart;
-
-    @ToString.Exclude
-    @OneToMany(mappedBy = "user",
-            cascade = {CascadeType.PERSIST, CascadeType.MERGE},
-            orphanRemoval = true)
-    private Set<Product> products;
 }

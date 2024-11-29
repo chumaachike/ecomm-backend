@@ -31,7 +31,6 @@ public class Product {
     private Integer quantity;
     private double price;
     private double discount;
-    private String image;
     private double specialPrice;
     private String imageUrl;
 
